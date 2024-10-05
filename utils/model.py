@@ -55,7 +55,7 @@ class VAE(nn.Module):
         """
         Method: encode(self, x)
         - Parameters:
-		    - x: batched input sequence
+            - x: batched input sequence
         - Purpose:
             - returns encoded mu and logvar for variational layer, output for VSAM layer.
         """
@@ -72,8 +72,8 @@ class VAE(nn.Module):
         """
         Method: reparameterize(self, mu, logvar)
         - Parameters:
-		    - mu: average
-		    - logvar: log variance
+            - mu: average
+            - logvar: log variance
         - Purpose:
             - reparameterization trick for back propagation.
             - allows for the generation of latent space values.
