@@ -4,7 +4,6 @@ data_path: "data/423_BE1_IZ1/KFEMS.HALLA.01.DC01.IP001_202205_feeder_00_tag_IO_5
 interval_path: "data/intervals.json"
 step_size: 50
 standardize: True
-train: True
 
 # model.py: 모델 초기화에 들어가는 파라미터
 # =======================================

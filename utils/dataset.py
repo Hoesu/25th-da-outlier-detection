@@ -10,10 +10,10 @@ class OutlierDataset(Dataset):
         self.config = config
         self.data = self.prepare_data()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.data)
     
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> torch.Tensor:
         return self.data[idx]
 
     def load_csv(self) -> pd.DataFrame:
@@ -24,7 +24,7 @@ class OutlierDataset(Dataset):
         data = pd.read_csv(data_path, usecols=['value'])
         return data
     
-    def load_json(self) -> list:
+    def load_json(self) -> list[list[int]]:
         """
         비교적 이상치의 위험성이 적은 구간에 대한 정보 불러오기.
         """
