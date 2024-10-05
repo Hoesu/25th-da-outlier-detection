@@ -1,13 +1,10 @@
 # dataset.py: 데이터셋 불러오기에 사용되는 파라미터
 # =======================================
-data_path: 'data/423_BE1_IZ1/KFEMS.HALLA.01.DC01.IP001_202205_feeder_00_tag_IO_5SEC_MIX_423_BE1_IZ1.csv'
+data_path: "data/423_BE1_IZ1/KFEMS.HALLA.01.DC01.IP001_202205_feeder_00_tag_IO_5SEC_MIX_423_BE1_IZ1.csv"
 interval_path: "data/intervals.json"
+step_size: 50
 standardize: True
-
-file_num: 1000
-Ntrainpoints: 5000
-Ntestpoints: 1000
-number_of_noisy_obs: 5
+train: True
 
 # model.py: 모델 초기화에 들어가는 파라미터
 # =======================================
