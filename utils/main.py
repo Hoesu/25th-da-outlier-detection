@@ -3,12 +3,14 @@ import yaml
 import logging
 import platform
 import argparse
+from tqdm import tqdm
 
 import torch
 from torch import optim
 import torch.utils.data
-from torch.utils.data import Dataset
+from torch.nn import functional as F
 from torch.utils.data import DataLoader
+from torch.utils.data import random_split
 
 from model import VAE
 from dataset import OutlierDataset
@@ -28,39 +30,57 @@ def setup_logging(path):
         ]
     )
 
-## TODO 1 =============================================================
-## 모든 메소드의 입력값, 출력값에 대한 타이핑 추가하기. (model.py 주석 참고.)
-## def example_method(number: int,
-##                    string: str
-##                    data  : dict) -> float:
+def collate_fn(batch):
+    batch = torch.stack(batch)
+    return batch.permute(1, 0, 2)
 
-## 모든 메소드 입력값에 맞춰서 구현해놓기 (깃허브 참고)
-## 필요하면 언제든지 수정할 수 있게 주석 상세하게 추가하기.
-## 주어진 환경에서 돌아갈 수 있는 코드인지 스스로 확인.
+def loss_function(config,
+                  recon_x,
+                  x,
+                  mu,
+                  logvar,
+                  lamb,
+                  mu_att,
+                  logvar_att):
+    CE = F.mse_loss(recon_x, x, reduction='sum')
+    KLD = lamb*(-0.5) * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    KLD_attention = lamb*config['eta']*(-0.5) * torch.sum(1 + logvar_att - mu_att.pow(2) - logvar_att.exp())
+    return CE + KLD + KLD_attention
 
-def loss_function(recon_x, x, mu, logvar,lamb, mu_att, logvar_att):
-    """
-    깃허브 참고
-    """
-    pass
+def train(lambda_kl: float,
+          model: VAE,
+          dataloader: DataLoader,
+          device: torch.device,
+          optimizer: optim.Optimizer) -> float:
+    
+    model.train()
+    train_loss = 0
+    
+    for trainbatch in dataloader:
+        trainbatch = trainbatch.to(device)
+        optimizer.zero_grad()
+        recon_batch, mu, logvar, _, _, _, _, _, c_t_mus, c_t_logvars, _ = model(trainbatch)
+        loss = loss_function(config, recon_batch, trainbatch, mu, logvar, lambda_kl, c_t_mus, c_t_logvars)
+        loss.backward()
+        train_loss += loss.item()
+        optimizer.step()
+    return train_loss
+    
+def test(lambda_kl: float,
+         model: VAE,
+         dataloader: DataLoader,
+         device: torch.device) -> float:
+    
+    model.eval()
+    test_loss = 0
 
-def get_batches(iterable, batch_size):
-    """
-    깃허브 참고
-    """
-    pass
-
-def train(epoch,lambda_kl):
-    """
-    깃허브 참고
-    """
-    pass
-
-def test(epoch,lambda_kl):
-    """
-    깃허브 참고
-    """
-    pass
+    with torch.no_grad():
+        for testbatch in dataloader:
+            testbatch = testbatch.to(device)
+            recon_batch, mu, logvar, _, _, _, _, _, c_t_mus, c_t_logvars, _, _ = model(testbatch)
+            loss = loss_function(config, recon_batch, testbatch, mu, logvar, lambda_kl, c_t_mus, c_t_logvars)
+            test_loss += loss.item()
+    return test_loss
 
 def save(config):
     """
@@ -70,7 +90,6 @@ def save(config):
     모델 테스트 후에는 이상치 값들과 시각화 이미지를 저장합니다.
     """
     pass
-## =================================================================
 
 if __name__ == '__main__':
     ## Set up Argument Parser
@@ -106,8 +125,7 @@ if __name__ == '__main__':
         logging.info("No GPU available, using CPU instead.")
 
     ## Set train/test mode
-    train = config['train']
-    if train:
+    if config['train']:
         logging.info("Train mode.")
     else:
         logging.info("Test mode.")
@@ -119,8 +137,28 @@ if __name__ == '__main__':
 
     ## load dataset from config
     dataset = OutlierDataset(config)
-    dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True)
-    logging.info("Dataset loaded successfully.")
+    if config['train']:
+        dataset_size = len(dataset)
+        train_size = int(dataset_size * 0.8)
+        validation_size = dataset_size - train_size
+        train_dataset, validation_dataset = random_split(dataset, [train_size, validation_size])
+        train_dataloader = DataLoader(train_dataset,
+                                      batch_size=config['batch_size'],
+                                      shuffle=True,
+                                      drop_last=True,
+                                      collate_fn=collate_fn)
+        val_dataloader = DataLoader(validation_dataset,
+                                    batch_size=config['batch_size'],
+                                    shuffle=False,
+                                    drop_last=True,
+                                    collate_fn=collate_fn)
+        logging.info("Training and validation datasets loaded successfully.")
+    else:
+        test_dataloader = DataLoader(dataset.data,
+                                     batch_size=config['batch_size'],
+                                     shuffle=False,
+                                     drop_last=True)
+    logging.info("Test dataset loaded successfully.")
 
     ## load model from config
     model = VAE(config)
@@ -139,6 +177,32 @@ if __name__ == '__main__':
         logging.info("Using Adam optimizer.")
     assert optimizer_choice in ['AdamW', 'SGD', 'Adam']
 
-    ## TODO 3 ==========================================================
-    ## 위에 메소드 작성 끝나면 그거 사용해서 알아서 채워넣기 ㅋ
-    ## =================================================================
+    ## Start Training
+    if config['train']:
+        epochs = config['epochs']
+        lambda_kl = config['lambda_kl']
+
+        for epoch in range(1, epochs + 1):
+            train_loss = train(lambda_kl, model, train_dataloader, device, optimizer)
+            logging.info(f"Epoch {epoch}, Train Loss: {train_loss:.4f}")
+            
+            # Validation step
+            val_loss = test(lambda_kl, model, val_dataloader, device)
+            logging.info(f"Epoch {epoch}, Validation Loss: {val_loss:.4f}")
+            
+            # Save model checkpoints after every epoch
+            checkpoint_path = os.path.join(output_dirc, f"model_epoch_{epoch}.pt")
+            torch.save(model.state_dict(), checkpoint_path)
+            logging.info(f"Model checkpoint saved at epoch {epoch} to {checkpoint_path}")
+        
+        logging.info("Training completed successfully.")
+
+    else:
+        # Testing phase
+        lambda_kl = config['lambda_kl']
+        test_loss = test(lambda_kl, model, test_dataloader, device)
+        logging.info(f"Test Loss: {test_loss:.4f}")
+        
+        # Save test results or anomalies
+        save(config)
+        logging.info("Testing completed successfully and results saved.")

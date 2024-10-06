@@ -11,16 +11,10 @@ class OutlierDataset(Dataset):
         self.data = self.prepare_data()
 
     def __len__(self) -> int:
-        """
-        - 총 배치 개수 리턴.
-        """
-        return self.data.shape[1]
+        return len(self.data)
     
     def __getitem__(self, idx: int) -> torch.Tensor:
-        """
-        - 데이터로더는 배치를 하나씩 가저간다.
-        """
-        return self.data[:,idx,0]
+        return self.data[idx]
 
     def load_csv(self) -> pd.DataFrame:
         """
@@ -31,7 +25,7 @@ class OutlierDataset(Dataset):
         try:
             data = pd.read_csv(data_path, usecols=['value'])
         except Exception as e:
-            print("csv 파일을 불러오는 도중 문제가 발생했습니다.")
+            print(f"csv 파일을 불러오는 도중 문제가 발생했습니다: {e}")
             print("config.yaml을 열어 csv 파일 경로가 상대경로로 기입되어 있는지 확인하세요.")
         return data
     
@@ -48,7 +42,7 @@ class OutlierDataset(Dataset):
             with open(interval_path, 'r') as file:
                 interval = json.load(file)[dirc_name][file_name]
         except Exception as e:
-            print("json 파일을 불러오는 도중 문제가 발생했습니다.")
+            print(f"json 파일을 불러오는 도중 문제가 발생했습니다: {e}")
             print("config.yaml을 열어 csv, json 파일 경로가 상대경로로 기입되어 있는지 확인하세요.")
         return interval
     
@@ -88,7 +82,7 @@ class OutlierDataset(Dataset):
         means = data_array.mean(axis=1, keepdims=True)
         stds = data_array.std(axis=1, keepdims=True)
         normalized_data = (data_array - means) / stds
-        return torch.tensor(normalized_data.T, dtype=torch.float32).unsqueeze(-1)
+        return torch.tensor(normalized_data, dtype=torch.float32).unsqueeze(-1)
 
     def add_noise(self, data: torch.Tensor) -> torch.Tensor:
         """
@@ -109,10 +103,8 @@ class OutlierDataset(Dataset):
         """
         - 훈련, 테스트 케이스에 따라서 데이터 전처리 진행.
         """
-        train = self.config['train']
         data = self.load_csv()
-
-        if train:
+        if self.config['train']:
             intervals = self.load_json()
             data = self.split_by_interval(data, intervals)
             data = self.slice_by_window(data)
