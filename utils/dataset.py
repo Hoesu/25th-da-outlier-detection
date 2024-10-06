@@ -81,6 +81,7 @@ class OutlierDataset(Dataset):
         data_array = np.array(data)
         means = data_array.mean(axis=1, keepdims=True)
         stds = data_array.std(axis=1, keepdims=True)
+        stds = np.where(stds == 0, 1e-8, stds)
         normalized_data = (data_array - means) / stds
         return torch.tensor(normalized_data, dtype=torch.float32).unsqueeze(-1)
 
