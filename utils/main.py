@@ -1,16 +1,17 @@
 import os
 import yaml
-import torch
 import logging
 import platform
 import argparse
 
 import torch
-import torch.utils.data
 from torch import optim
+import torch.utils.data
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 
-from utils.model import VAE
-from utils.dataset import Dataset
+from model import VAE
+from dataset import OutlierDataset
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -26,11 +27,6 @@ def setup_logging(path):
             logging.StreamHandler()
         ]
     )
-
-def load_yaml_config(config_path: str) -> dict:
-    with open(config_path, 'r') as file:
-        config = yaml.safe_load(file)
-    return config
 
 ## TODO 1 =============================================================
 ## 모든 메소드의 입력값, 출력값에 대한 타이핑 추가하기. (model.py 주석 참고.)
@@ -66,7 +62,7 @@ def test(epoch,lambda_kl):
     """
     pass
 
-def save(config, ...):
+def save(config):
     """
     모델 훈련, 테스트 후에는 output 디렉토리 아래에 사용한 데이터셋의
     기기명, 데이터 수집 기간, 피더 번호, 태그명 별로 디렉토리를 생성합니다.
@@ -76,16 +72,26 @@ def save(config, ...):
     pass
 ## =================================================================
 
-
 if __name__ == '__main__':
     ## Set up Argument Parser
     args = parse_args()
 
-    ## Set up Logger
-    ## TODO 2 ==========================================================
-    ## log_file_path를 save 메소드에서 사용할 디렉토리로 올바르게 배정해줘야겠죠?
-    ## =================================================================
-    log_file_path = '...'
+    ## Load config.yaml
+    with open(args.config, 'r') as file:
+        config = yaml.safe_load(file)
+
+    ## Set up output directory and log
+    data_path = config['data_path']
+    dirc_name = data_path.split('/')[1]
+    file_name = data_path.split('/')[2][:-4]
+    output_dirc = os.path.join('./output', dirc_name, file_name)
+    if config['train']:
+        output_dirc = os.path.join(output_dirc, 'training_results')
+    else:
+        output_dirc = os.path.join(output_dirc, 'inference_results')
+    if not os.path.exists(output_dirc):
+        os.makedirs(output_dirc)
+    log_file_path = os.path.join(output_dirc, 'logging.log')
     setup_logging(log_file_path)
 
     ## Set Device
@@ -98,10 +104,6 @@ if __name__ == '__main__':
     else:
         device = torch.device("cpu")
         logging.info("No GPU available, using CPU instead.")
-
-    ## Load config.yaml
-    config = load_yaml_config(args.config)
-    logging.info("Configuration file loaded successfully.")
 
     ## Set train/test mode
     train = config['train']
@@ -116,7 +118,8 @@ if __name__ == '__main__':
     logging.info(f"Optimizer choice: {optimizer_choice}, Learning rate: {learning_rate}")
 
     ## load dataset from config
-    dataset = Dataset(config)
+    dataset = OutlierDataset(config)
+    dataloader = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True)
     logging.info("Dataset loaded successfully.")
 
     ## load model from config

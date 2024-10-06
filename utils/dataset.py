@@ -11,10 +11,16 @@ class OutlierDataset(Dataset):
         self.data = self.prepare_data()
 
     def __len__(self) -> int:
-        return len(self.data)
+        """
+        - 총 배치 개수 리턴.
+        """
+        return self.data.shape[1]
     
     def __getitem__(self, idx: int) -> torch.Tensor:
-        return self.data[idx]
+        """
+        - 데이터로더는 배치를 하나씩 가저간다.
+        """
+        return self.data[:,idx,0]
 
     def load_csv(self) -> pd.DataFrame:
         """
@@ -76,11 +82,11 @@ class OutlierDataset(Dataset):
 
     def standardize(self, data: list[np.ndarray]) -> torch.Tensor:
         """
-        - 모든 값들을 정규화, [seq_size, batch_size, 1] 차원의 텐서 반환.
+        - 모든 값들을 시퀀스 단위로 정규화, [seq_size, batch_size, 1] 차원의 텐서로 반환.
         """
         data_array = np.array(data)
-        means = data_array.mean()
-        stds = data_array.std()
+        means = data_array.mean(axis=1, keepdims=True)
+        stds = data_array.std(axis=1, keepdims=True)
         normalized_data = (data_array - means) / stds
         return torch.tensor(normalized_data.T, dtype=torch.float32).unsqueeze(-1)
 
@@ -104,7 +110,6 @@ class OutlierDataset(Dataset):
         - 훈련, 테스트 케이스에 따라서 데이터 전처리 진행.
         """
         train = self.config['train']
-        batch_size = self.config['batch_size']
         data = self.load_csv()
 
         if train:
