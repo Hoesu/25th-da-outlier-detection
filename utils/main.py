@@ -51,7 +51,8 @@ def train(lambda_kl: float,
           model: VAE,
           dataloader: DataLoader,
           device: torch.device,
-          optimizer: optim.Optimizer) -> float:
+          optimizer: optim.Optimizer,
+          size: int) -> float:
     
     model.train()
     train_loss = 0
@@ -64,12 +65,13 @@ def train(lambda_kl: float,
         loss.backward()
         train_loss += loss.item()
         optimizer.step()
-    return train_loss
+    return train_loss / size
     
 def test(lambda_kl: float,
          model: VAE,
          dataloader: DataLoader,
-         device: torch.device) -> float:
+         device: torch.device,
+         size: int) -> float:
     
     model.eval()
     test_loss = 0
@@ -80,7 +82,7 @@ def test(lambda_kl: float,
             recon_batch, mu, logvar, _, _, _, _, _, c_t_mus, c_t_logvars, _, _ = model(testbatch)
             loss = loss_function(config, recon_batch, testbatch, mu, logvar, lambda_kl, c_t_mus, c_t_logvars)
             test_loss += loss.item()
-    return test_loss
+    return test_loss / size
 
 def save(config):
     """
@@ -183,11 +185,11 @@ if __name__ == '__main__':
         lambda_kl = config['lambda_kl']
 
         for epoch in range(1, epochs + 1):
-            train_loss = train(lambda_kl, model, train_dataloader, device, optimizer)
+            train_loss = train(lambda_kl, model, train_dataloader, device, optimizer, len(train_dataloader))
             logging.info(f"Epoch {epoch}, Train Loss: {train_loss:.4f}")
             
             # Validation step
-            val_loss = test(lambda_kl, model, val_dataloader, device)
+            val_loss = test(lambda_kl, model, val_dataloader, device, len(val_dataloader))
             logging.info(f"Epoch {epoch}, Validation Loss: {val_loss:.4f}")
             
             # Save model checkpoints after every epoch
@@ -200,7 +202,7 @@ if __name__ == '__main__':
     else:
         # Testing phase
         lambda_kl = config['lambda_kl']
-        test_loss = test(lambda_kl, model, test_dataloader, device)
+        test_loss = test(lambda_kl, model, test_dataloader, device, len(test_dataloader))
         logging.info(f"Test Loss: {test_loss:.4f}")
         
         # Save test results or anomalies
