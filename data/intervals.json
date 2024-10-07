@@ -72,13 +72,16 @@
             []
         ],
         "KFEMS.HALLA.01.DC01.IP001_202205_feeder_00_tag_IO_5SEC_MIX_423_BE1_IZ1.csv": [
-            [0,20000]
+            [2500,14000],[15000,21000],[25000,30000]
         ],
         "KFEMS.HALLA.01.DC01.IP001_202306_feeder_00_tag_IO_5SEC_MIX_423_BE1_IZ1.csv": [
             []
         ],
         "KFEMS.HALLA.01.DC01.IP001_202212_feeder_00_tag_IO_5SEC_MIX_423_BE1_IZ1.csv": [
             []
+        ],
+        "sample.csv": [
+            
         ]
     },
     "433_CG1_ZC1_RWIN": {

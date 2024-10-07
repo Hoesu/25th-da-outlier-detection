@@ -2,7 +2,7 @@
 # =======================================
 data_path: "data/423_BE1_IZ1/KFEMS.HALLA.01.DC01.IP001_202205_feeder_00_tag_IO_5SEC_MIX_423_BE1_IZ1.csv"
 interval_path: "data/intervals.json"
-step_size: 50
+step_size: 100
 standardize: True
 split_ratio: 0.8
 
@@ -13,16 +13,16 @@ latent_size: 20
 input_size: 1
 seq_size: 150
 num_lyears: 1
-batch_size: 5
+batch_size: 32
 attention_size: 2
 sample_reps: 20
 directions: 2
 
 # main.py: 모델 사용에 들어가는 파라미터
 # =======================================
-train: True
+train: False
 optimizer_choice: 'AdamW'
-learning_rate: 0.02
-epochs: 8
+learning_rate: 0.002
+epochs: 200
 lambda_kl: 0
 eta: 0.01

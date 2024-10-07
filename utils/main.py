@@ -51,8 +51,7 @@ def train(lambda_kl: float,
           model: VAE,
           dataloader: DataLoader,
           device: torch.device,
-          optimizer: optim.Optimizer,
-          size: int) -> float:
+          optimizer: optim.Optimizer) -> float:
     
     model.train()
     train_loss = 0
@@ -65,13 +64,12 @@ def train(lambda_kl: float,
         loss.backward()
         train_loss += loss.item()
         optimizer.step()
-    return train_loss / size
+    return train_loss / len(dataloader)
     
 def test(lambda_kl: float,
          model: VAE,
          dataloader: DataLoader,
-         device: torch.device,
-         size: int) -> float:
+         device: torch.device) -> float:
     
     model.eval()
     test_loss = 0
@@ -82,7 +80,7 @@ def test(lambda_kl: float,
             recon_batch, mu, logvar, _, _, _, _, _, c_t_mus, c_t_logvars, _, _ = model(testbatch)
             loss = loss_function(config, recon_batch, testbatch, mu, logvar, lambda_kl, c_t_mus, c_t_logvars)
             test_loss += loss.item()
-    return test_loss / size
+    return test_loss / len(dataloader)
 
 def save(config):
     """
@@ -147,20 +145,21 @@ if __name__ == '__main__':
         train_dataloader = DataLoader(train_dataset,
                                       batch_size=config['batch_size'],
                                       shuffle=True,
-                                      drop_last=True,
+                                      drop_last = True,
                                       collate_fn=collate_fn)
         val_dataloader = DataLoader(validation_dataset,
                                     batch_size=config['batch_size'],
                                     shuffle=False,
-                                    drop_last=True,
+                                    drop_last = True,
                                     collate_fn=collate_fn)
         logging.info("Training and validation datasets loaded successfully.")
-    else:
+        """
+        else:
         test_dataloader = DataLoader(dataset.data,
                                      batch_size=config['batch_size'],
-                                     shuffle=False,
-                                     drop_last=True)
-    logging.info("Test dataset loaded successfully.")
+                                     shuffle=False)
+        logging.info("Test dataset loaded successfully.")
+        """
 
     ## load model from config
     model = VAE(config)
@@ -185,26 +184,28 @@ if __name__ == '__main__':
         lambda_kl = config['lambda_kl']
 
         for epoch in range(1, epochs + 1):
-            train_loss = train(lambda_kl, model, train_dataloader, device, optimizer, len(train_dataloader))
+            train_loss = train(lambda_kl, model, train_dataloader, device, optimizer)
             logging.info(f"Epoch {epoch}, Train Loss: {train_loss:.4f}")
             
             # Validation step
-            val_loss = test(lambda_kl, model, val_dataloader, device, len(val_dataloader))
+            val_loss = test(lambda_kl, model, val_dataloader, device)
             logging.info(f"Epoch {epoch}, Validation Loss: {val_loss:.4f}")
             
-            # Save model checkpoints after every epoch
-            checkpoint_path = os.path.join(output_dirc, f"model_epoch_{epoch}.pt")
-            torch.save(model.state_dict(), checkpoint_path)
-            logging.info(f"Model checkpoint saved at epoch {epoch} to {checkpoint_path}")
+        # Save model checkpoints after every epoch
+        checkpoint_path = os.path.join(output_dirc, f"model_epoch_{epoch}.pt")
+        torch.save(model.state_dict(), checkpoint_path)
+        logging.info(f"Model checkpoint saved at epoch {epoch} to {checkpoint_path}")
         
         logging.info("Training completed successfully.")
-
+    """
     else:
         # Testing phase
         lambda_kl = config['lambda_kl']
-        test_loss = test(lambda_kl, model, test_dataloader, device, len(test_dataloader))
+        breakpoint()
+        test_loss = test(lambda_kl, model, test_dataloader, device)
         logging.info(f"Test Loss: {test_loss:.4f}")
         
         # Save test results or anomalies
         save(config)
         logging.info("Testing completed successfully and results saved.")
+    """

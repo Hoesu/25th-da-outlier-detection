@@ -29,7 +29,7 @@ class OutlierDataset(Dataset):
             print("config.yaml을 열어 csv 파일 경로가 상대경로로 기입되어 있는지 확인하세요.")
         return data
     
-    def load_json(self) -> list[list[int]]:
+    def load_json(self) -> list:
         """
         - 비교적 이상치의 위험성이 적은 구간에 대한 정보를 담은 json 파일 불러오기.
         - csv 파일 경로를 파싱해서 json의 키 값으로 재활용한다.
@@ -48,7 +48,7 @@ class OutlierDataset(Dataset):
     
     def split_by_interval(self,
                           data: pd.DataFrame,
-                          intervals: list[list[int]]) -> list[pd.DataFrame]:
+                          intervals: list) -> list:
         """
         - 불러온 구간 정보로 원본 데이터프레임 분할, 분할한 데이터프레임을 리스트에 담아 반환.
         - 각각의 분할 구간은 우리가 훈련 데이터로 사용할 수 있는 값들을 의미한다.
@@ -59,7 +59,7 @@ class OutlierDataset(Dataset):
             subsets.append(subset)
         return subsets
 
-    def slice_by_window(self, data: list[pd.DataFrame]) -> list[np.ndarray]:
+    def slice_by_window(self, data: list) -> list:
         """
         - 분할된 데이터프레임별로 주어진 윈도우로 스텝 사이즈 만큼 이동하며 데이터 추출.
         - 만약에 주어진 구간 안에서 윈도우 설정이 불가능하면 해당 구간을 건너뛴다.
@@ -74,7 +74,7 @@ class OutlierDataset(Dataset):
                 windows.append(window)
         return windows
 
-    def standardize(self, data: list[np.ndarray]) -> torch.Tensor:
+    def standardize(self, data: list) -> torch.Tensor:
         """
         - 모든 값들을 시퀀스 단위로 정규화, [seq_size, batch_size, 1] 차원의 텐서로 반환.
         """
@@ -89,16 +89,19 @@ class OutlierDataset(Dataset):
         """
         - 모든 값에 평균을 0, 표준편차를 1로 하는 정규분포로부터 샘플링된 노이즈를 추가한다.
         """
-        noise = torch.normal(0, 0.01, data.size())
+        noise = torch.normal(0, 1, data.size())
         return data + noise
 
-    def process_test(self, data: pd.DataFrame) -> list[np.ndarray]:
+    def process_test(self, data: pd.DataFrame) -> list:
         """
         - 테스트용 데이터셋 생성시 원본 데이터프레임을 [-1, seq_size] 형태의 2차원 배열로 반환.
         """
         seq_size = self.config['seq_size']
         values = data['value'].to_numpy()
-        return [values[i:i + seq_size] for i in range(len(values) - seq_size + 1)]
+        segs = [values[i:i + seq_size] for i in range(0, len(values), seq_size)]
+        max_length = max(len(seg) for seg in segs)
+        padded_segs = [np.pad(seg, (0, max_length - len(seg)), mode='constant', constant_values=0) for seg in segs]
+        return padded_segs
 
     def prepare_data(self) -> torch.Tensor:
         """
@@ -109,9 +112,17 @@ class OutlierDataset(Dataset):
             intervals = self.load_json()
             data = self.split_by_interval(data, intervals)
             data = self.slice_by_window(data)
-            data = self.standardize(data)
+            if self.config['standardize']:
+                data = self.standardize(data)
+            else:
+                data = np.array(data)
+                data = torch.tensor(data, dtype=torch.float32).unsqueeze(-1)
             data = self.add_noise(data)
         else:
             data = self.process_test(data)
-            data = self.standardize(data)
+            if self.config['standardize']:
+                data = self.standardize(data)
+            else:
+                data = np.array(data)
+                data = torch.tensor(data, dtype=torch.float32).unsqueeze(-1)
         return data
