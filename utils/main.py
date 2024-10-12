@@ -124,13 +124,28 @@ def test(lambda_kl: float,
     return test_loss / len(dataloader)
 
 
-def recon_probability(data_batch: torch.Tensor,
+def recon_probability(config: dict,
+                      data_batch: torch.Tensor,
                       output_mu_all: torch.Tensor,
                       output_logvar_all: torch.Tensor) -> torch.Tensor:
     """
     - 배치별로 reconstruction probability를 계산합니다.
     """
-    return None
+    sample_reps = config['sample_reps']
+    seq_size = config['seq_size']
+    batch_size = config['batch_size']
+    feature_num = config['input_size']
+    probabilities = torch.empty(sample_reps, seq_size, batch_size, feature_num)
+
+    for rep in range(sample_reps):
+        mu = output_mu_all[rep, :, :, :]
+        var = torch.exp(output_logvar_all[rep, :, :, :])
+
+        prob = (1 / torch.sqrt(2 * torch.pi * var)) * torch.exp(-0.5 * ((data_batch - mu) ** 2) / var)
+        probabilities[rep] = prob
+
+    mean_probabilities = probabilities.mean(dim=0)
+    return mean_probabilities
 
 
 if __name__ == '__main__':
@@ -274,29 +289,36 @@ if __name__ == '__main__':
     else:
         all_original = []
         all_reconstructed = []
+        all_probabilities = []
 
         ## 인퍼런스를 시작합니다.
         with torch.no_grad():
             for data_batch in tqdm(inference_dataloader, desc="Running Inference"):
                 data_batch = data_batch.to(device)
                 output_good, _, _, _, _, _, _, _, _, _, output_mu_all, output_logvar_all = model(data_batch)
+                recon_prob = recon_probability(config, data_batch, output_mu_all, output_logvar_all)
 
                 data_batch = data_batch.squeeze(2).transpose(0, 1).flatten()
                 output_good = output_good.squeeze(2).transpose(0, 1).flatten()
+                recon_prob = recon_prob.squeeze(2).transpose(0, 1).flatten()
 
                 all_original.append(data_batch)
                 all_reconstructed.append(output_good)
+                all_probabilities.append(recon_prob)
 
         all_original = torch.cat(all_original)
         all_reconstructed = torch.cat(all_reconstructed)
+        all_probabilities = torch.cat(all_probabilities)
 
         all_original_np = all_original.cpu().numpy()
         all_reconstructed_np = all_reconstructed.cpu().numpy()
+        all_probabilities_np = all_probabilities.cpu().numpy()
 
         plot_path = os.path.join(output_dirc, 'original_vs_reconstructed.png')
         plt.figure(figsize=(16, 5))
         plt.plot(all_original_np, label='Original', alpha=1, color='blue')
         plt.plot(all_reconstructed_np, label='Reconstructed', alpha=0.5, color='orange')
+        plt.plot(all_probabilities_np, label='prob', alpha=0.5, color='red')
         plt.title('Original VS Reconstructed Data')
         plt.legend()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
