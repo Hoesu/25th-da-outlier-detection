@@ -312,7 +312,7 @@ if __name__ == '__main__':
 
         all_original_np = all_original.cpu().numpy()
         all_reconstructed_np = all_reconstructed.cpu().numpy()
-        all_probabilities_np = all_probabilities.cpu().numpy()
+        all_probabilities_np = all_probabilities.cpu().numpy() * 10
 
         plot_path = os.path.join(output_dirc, 'original_vs_reconstructed.png')
         plt.figure(figsize=(16, 5))

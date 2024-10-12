@@ -23,6 +23,6 @@ train: False
 recon_prob_threshold: 0.10
 optimizer_choice: 'AdamW'
 learning_rate: 0.02
-epochs: 8
+epochs: 10
 lambda_kl: 0
 eta: 0.01
