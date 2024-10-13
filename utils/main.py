@@ -346,6 +346,12 @@ if __name__ == '__main__':
         all_reconstructed_np = all_reconstructed.cpu().numpy()
         all_probabilities_np = all_probabilities.cpu().numpy()
 
+        original_data = dataset.original
+        original_length = len(original_data)
+        all_original_np = all_original_np[:original_length]
+        all_reconstructed_np = all_reconstructed_np[:original_length]
+        all_probabilities_np = all_probabilities_np[:original_length]
+
         plot_path = os.path.join(output_dirc, 'original_vs_reconstructed.png')
         plt.figure(figsize=(16, 5))
         plt.plot(all_original_np, label='Original', alpha=1, color='blue')
@@ -356,14 +362,13 @@ if __name__ == '__main__':
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         logging.info("인퍼런스 시각화 결과를 저장했습니다: original_vs_reconstructed.png")
 
-        original_data = dataset.original['value']
         recon_prob_threshold = config['recon_prob_threshold']
         anomaly_indices = np.where(all_probabilities_np <= recon_prob_threshold)[0]
         anomaly_intervals = get_anomaly_intervals(anomaly_indices)
 
         plot_path = os.path.join(output_dirc, 'anomalous_regions.png')
         plt.figure(figsize=(16,5))
-        plt.plot(original_data, label='Original', alpha=1, color='blue')
+        plt.plot(original_data['value'], label='Original', alpha=1, color='blue')
         for interval in anomaly_intervals:
             plt.axvspan(interval[0], interval[1], color='red', alpha=1)
         plt.title('Anomalous Regions')
@@ -371,4 +376,9 @@ if __name__ == '__main__':
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         logging.info("인퍼런스 시각화 결과를 저장했습니다: anomalous_regions.png")
 
-        
+        csv_path = os.path.join(output_dirc, f'anomaly_threshold_{recon_prob_threshold}.csv')
+        label = np.zeros(original_length)
+        label[anomaly_indices]=1
+        original_data['label']=label
+        original_data.to_csv(csv_path, index=False)
+        logging.info(f"인퍼런스 결과를 저장했습니다: anomaly_threshold_{recon_prob_threshold}.csv'")
