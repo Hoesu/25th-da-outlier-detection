@@ -3,7 +3,9 @@ import yaml
 import logging
 import platform
 import argparse
+import numpy as np
 from tqdm import tqdm
+from functools import partial
 import matplotlib.pyplot as plt
 plt.set_loglevel('WARNING')
 
@@ -40,14 +42,28 @@ def setup_logging(path):
     )
 
 
-def collate_fn(batch):
+def collate_train(batch):
     """
     - [seq_num, seq_size, 1] 차원의 전체 데이터셋으로부터
     - [seq_size, batch_size, 1] 차원 단위의 입력을 받아오기 위해
     - 데이터로더의 collate_fn 인자로 넘겨줄 메소드입니다.
     """
-    batch = torch.stack(batch)
-    return batch.permute(1, 0, 2)
+    batch = torch.stack(batch).permute(1, 0, 2)
+    return batch
+
+
+def collate_inference(batch, additional_param=None):
+    """
+    - [seq_num, seq_size, 1] 차원의 전체 데이터셋으로부터
+    - [seq_size, batch_size, 1] 차원 단위의 입력을 받아오기 위해
+    - 데이터로더의 collate_fn 인자로 넘겨줄 메소드입니다.
+    - 인퍼런스 단계에서 누락되는 정보가 발생하지 않도록 제로패딩을 추가합니다.
+    """
+    batch = torch.stack(batch).permute(1, 0, 2)
+    max_batch_size = additional_param['batch_size']
+    padded_batch = torch.zeros(batch.shape[0], max_batch_size, 1)
+    padded_batch[:, :batch.shape[1], :] = batch
+    return padded_batch
 
 
 def loss_function(config: dict,
@@ -148,6 +164,22 @@ def recon_probability(config: dict,
     return mean_probabilities
 
 
+def get_anomaly_intervals(anomaly_indices):
+    """
+    """
+    intervals = []
+    if len(anomaly_indices) == 0:
+        return intervals
+    
+    start = anomaly_indices[0]
+    for i in range(1, len(anomaly_indices)):
+        if anomaly_indices[i] != anomaly_indices[i - 1] + 1:
+            intervals.append((start, anomaly_indices[i - 1]))
+            start = anomaly_indices[i]
+    intervals.append((start, anomaly_indices[-1]))
+    return intervals
+
+
 if __name__ == '__main__':
 
     ## 파서로부터 config 파일의 경로를 받아옵니다.
@@ -208,22 +240,22 @@ if __name__ == '__main__':
                                       shuffle=True,
                                       drop_last=True,
                                       num_workers=4,
-                                      collate_fn=collate_fn)
+                                      collate_fn=collate_train)
         val_dataloader = DataLoader(validation_dataset,
                                     batch_size=config['batch_size'],
                                     shuffle=False,
                                     drop_last=True,
                                     num_workers=4,
-                                    collate_fn=collate_fn)
+                                    collate_fn=collate_train)
         logging.info("Training and validation dataset loaded successfully.")
 
     else:
         inference_dataloader = DataLoader(dataset.data,
                                           batch_size=config['batch_size'],
                                           shuffle=False,
-                                          drop_last=True,
+                                          drop_last=False,
                                           num_workers=4,
-                                          collate_fn=collate_fn)
+                                          collate_fn=partial(collate_inference, additional_param=config))
         logging.info("Inference dataset loaded successfully.")
 
 
@@ -312,7 +344,7 @@ if __name__ == '__main__':
 
         all_original_np = all_original.cpu().numpy()
         all_reconstructed_np = all_reconstructed.cpu().numpy()
-        all_probabilities_np = all_probabilities.cpu().numpy() * 10
+        all_probabilities_np = all_probabilities.cpu().numpy()
 
         plot_path = os.path.join(output_dirc, 'original_vs_reconstructed.png')
         plt.figure(figsize=(16, 5))
@@ -322,4 +354,21 @@ if __name__ == '__main__':
         plt.title('Original VS Reconstructed Data')
         plt.legend()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        logging.info("인퍼런스 시각화 결과를 저장했습니다.")
+        logging.info("인퍼런스 시각화 결과를 저장했습니다: original_vs_reconstructed.png")
+
+        original_data = dataset.original['value']
+        recon_prob_threshold = config['recon_prob_threshold']
+        anomaly_indices = np.where(all_probabilities_np <= recon_prob_threshold)[0]
+        anomaly_intervals = get_anomaly_intervals(anomaly_indices)
+
+        plot_path = os.path.join(output_dirc, 'anomalous_regions.png')
+        plt.figure(figsize=(16,5))
+        plt.plot(original_data, label='Original', alpha=1, color='blue')
+        for interval in anomaly_intervals:
+            plt.axvspan(interval[0], interval[1], color='red', alpha=1)
+        plt.title('Anomalous Regions')
+        plt.legend()
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        logging.info("인퍼런스 시각화 결과를 저장했습니다: anomalous_regions.png")
+
+        

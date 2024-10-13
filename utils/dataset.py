@@ -8,6 +8,7 @@ from torch.utils.data import Dataset
 class OutlierDataset(Dataset):
     def __init__(self, config):
         self.config = config
+        self.original = pd.read_csv(self.config['data_path'])
         self.data = self.prepare_data()
 
 
