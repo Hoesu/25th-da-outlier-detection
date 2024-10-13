@@ -353,10 +353,10 @@ if __name__ == '__main__':
         all_probabilities_np = all_probabilities_np[:original_length]
 
         plot_path = os.path.join(output_dirc, 'original_vs_reconstructed.png')
-        plt.figure(figsize=(16, 5))
-        plt.plot(all_original_np, label='Original', alpha=1, color='blue')
-        plt.plot(all_reconstructed_np, label='Reconstructed', alpha=0.5, color='orange')
-        plt.plot(all_probabilities_np, label='prob', alpha=0.5, color='red')
+        plt.figure(figsize=(20, 5))
+        plt.plot(all_original_np, label='Original', alpha=0.8, color='blue')
+        plt.plot(all_reconstructed_np, label='Reconstructed', alpha=1, color='orange')
+        plt.plot(all_probabilities_np*10, label='prob', alpha=1, color='red')
         plt.title('Original VS Reconstructed Data')
         plt.legend()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
@@ -367,7 +367,7 @@ if __name__ == '__main__':
         anomaly_intervals = get_anomaly_intervals(anomaly_indices)
 
         plot_path = os.path.join(output_dirc, 'anomalous_regions.png')
-        plt.figure(figsize=(16,5))
+        plt.figure(figsize=(20,5))
         plt.plot(original_data['value'], label='Original', alpha=1, color='blue')
         for interval in anomaly_intervals:
             plt.axvspan(interval[0], interval[1], color='red', alpha=1)
