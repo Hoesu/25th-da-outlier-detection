@@ -13,19 +13,19 @@
 - [YBIGTA 25기 한예지](https://github.com/hyez2)
 
 ## Environment
-아나콘다 가상환경 생성
+Create conda virtual environment
 ```bash
   conda create -n outlier python=3.11
   conda activate outlier
 ```
-깃허브 코드 가져오기
+Github pull request
 ```bash
   git init
   git remote add origin https://github.com/YBIGTA/25th-da-outlier-detection.git
   git branch -m main
   git pull origin main
 ```
-필수 라이브러리 설치
+Install requirements
 ```bash
   pip install -r requirements.txt
 ```
@@ -43,9 +43,37 @@ WORKING DIRECTORY
 └── requirements.txt
 ```
 
+## Data Pipeline
+![diagram](https://github.com/user-attachments/assets/3549393d-2edd-4822-8340-c54adf6f9e38)
+
+
 ## Configurations
 ```bash
-  TO BE ANNOUNCED.
+# dataset.py
+data_path: "PATH_TO_CSV"
+interval_path: "PATH_TO_JSON"
+step_size: 50
+split_ratio: 0.8
+
+# model.py
+lstm_size: 128
+latent_size: 20
+input_size: 1
+seq_size: 150
+num_lyears: 1
+batch_size: 16
+attention_size: 2
+sample_reps: 20
+directions: 2
+
+# main.py
+train: True
+recon_prob_threshold: 0.20
+optimizer_choice: 'AdamW'
+learning_rate: 0.02
+epochs: 10
+lambda_kl: 0
+eta: 0.01
 ```
 
 ## Deployment

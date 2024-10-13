@@ -20,7 +20,7 @@ directions: 2
 # main.py: 모델 사용에 들어가는 파라미터
 # =======================================
 train: False
-recon_prob_threshold: 0.20
+recon_prob_threshold: 0.2
 optimizer_choice: 'AdamW'
 learning_rate: 0.02
 epochs: 10
