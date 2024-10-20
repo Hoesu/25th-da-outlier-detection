@@ -1,9 +1,13 @@
 # Files
 ```bash
+├── README.md
 ├── csv_to_json.py
 ├── displayPlot.py
+├── extractIntervals.py
 ├── getDataframe.py
 ├── if_train.py
+├── isolation_forest_anomaly
+├── isolation_forest_anomaly.json
 ├── isolation_forest_result
 └── run_if_train.py
 ```
