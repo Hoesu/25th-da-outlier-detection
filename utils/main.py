@@ -363,18 +363,17 @@ if __name__ == '__main__':
         logging.info("인퍼런스 시각화 결과를 저장했습니다: original_vs_reconstructed.png")
 
         recon_prob_threshold = config['recon_prob_threshold']
+        normal_indices = np.where(all_probabilities_np > recon_prob_threshold)[0]
         anomaly_indices = np.where(all_probabilities_np <= recon_prob_threshold)[0]
-        anomaly_intervals = get_anomaly_intervals(anomaly_indices)
 
-        plot_path = os.path.join(output_dirc, 'anomalous_regions.png')
-        plt.figure(figsize=(20,5))
-        plt.plot(original_data['value'], label='Original', alpha=1, color='blue')
-        for interval in anomaly_intervals:
-            plt.axvspan(interval[0], interval[1], color='red', alpha=1)
-        plt.title('Anomalous Regions')
+        plot_path = os.path.join(output_dirc, 'anomaly_regions.png')
+        plt.figure(figsize=(40, 10))
+        plt.scatter(normal_indices, original_data.iloc[normal_indices]['value'], color='black', label='Normal', s=1)
+        plt.scatter(anomaly_indices, original_data.iloc[anomaly_indices]['value'], color='red', label='Anomaly', s=1)
+        plt.title('anomaly_points')
         plt.legend()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-        logging.info("인퍼런스 시각화 결과를 저장했습니다: anomalous_regions.png")
+        logging.info("인퍼런스 시각화 결과를 저장했습니다: anomaly_points.png")
 
         csv_path = os.path.join(output_dirc, f'anomaly_threshold_{recon_prob_threshold}.csv')
         label = np.zeros(original_length)

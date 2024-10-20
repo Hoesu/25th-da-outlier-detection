@@ -8,9 +8,13 @@ from torch.utils.data import Dataset
 class OutlierDataset(Dataset):
     def __init__(self, config):
         self.config = config
+        self.data_path = config['data_path']
+        self.interval_path = config['interval_path']
+        self.train = config['train']
+        self.step_size = config['step_size']
+        self.seq_size = config['seq_size']
         self.original = pd.read_csv(self.config['data_path'])
         self.data = self.prepare_data()
-
 
     def __len__(self) -> int:
         return len(self.data)
@@ -25,7 +29,7 @@ class OutlierDataset(Dataset):
         - 입력받은 경로에 있는 csv파일을 데이터프레임으로 받습니다.
         - 데이터프레임에서 'value'열에 있는 값들만 넘파이 배열로 반환합니다.
         """
-        data_path = self.config['data_path']
+        data_path = self.data_path
         try:
             data = pd.read_csv(data_path, usecols=['value'])
         except Exception as e:
@@ -38,8 +42,8 @@ class OutlierDataset(Dataset):
         - 비교적 이상치의 위험성이 적은 구간에 대한 정보를 담은 json 파일 불러옵니다.
         - csv 파일 경로를 파싱해서 json의 키 값으로 재활용합니다.
         """
-        data_path = self.config['data_path']
-        interval_path = self.config['interval_path']
+        data_path = self.data_path
+        interval_path = self.interval_path
         dirc_name = data_path.split('/')[1]
         file_name = data_path.split('/')[2]
         try:
@@ -69,8 +73,8 @@ class OutlierDataset(Dataset):
         - 분할된 데이터프레임별로 주어진 윈도우로 스텝 사이즈 만큼 이동하며 데이터 추출합니다.
         - 만약에 주어진 구간 안에서 윈도우 설정이 불가능하면 해당 구간을 건너뜁니다.
         """
-        window_size = self.config['seq_size']
-        step_size = self.config['step_size']
+        window_size = self.seq_size
+        step_size = self.step_size
         windows = []
         for subset in data:
             values = subset['value'].to_numpy()
@@ -105,7 +109,7 @@ class OutlierDataset(Dataset):
         """
         - 인퍼런스 데이터셋 생성시 원본 데이터프레임을 [seq_num, seq_size] 형태의 2차원 배열로 반환합니다.
         """
-        seq_size = self.config['seq_size']
+        seq_size = self.seq_size
         values = data['value'].to_numpy()
 
         # 데이터 길이를 seq_size의 배수로 맞추기 위한 제로 패딩 추가
@@ -120,7 +124,7 @@ class OutlierDataset(Dataset):
         - 훈련, 인퍼런스 케이스에 따라서 데이터 전처리 진행.
         """
         data = self.load_csv()
-        if self.config['train']:
+        if self.train:
             intervals = self.load_json()
             data = self.split_by_interval(data, intervals)
             data = self.slice_by_window(data)
