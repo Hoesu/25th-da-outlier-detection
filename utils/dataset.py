@@ -13,8 +13,9 @@ class OutlierDataset(Dataset):
         self.train = config['train']
         self.step_size = config['step_size']
         self.seq_size = config['seq_size']
-        self.original = pd.read_csv(self.config['data_path'])
         self.data = self.prepare_data()
+        if self.train is False:
+            self.original = pd.read_csv(self.config['data_path'])
 
     def __len__(self) -> int:
         return len(self.data)
@@ -24,12 +25,11 @@ class OutlierDataset(Dataset):
         return self.data[idx]
 
 
-    def load_csv(self) -> pd.DataFrame:
+    def load_csv(self, data_path) -> pd.DataFrame:
         """
         - 입력받은 경로에 있는 csv파일을 데이터프레임으로 받습니다.
         - 데이터프레임에서 'value'열에 있는 값들만 넘파이 배열로 반환합니다.
         """
-        data_path = self.data_path
         try:
             data = pd.read_csv(data_path, usecols=['value'])
         except Exception as e:
@@ -37,12 +37,11 @@ class OutlierDataset(Dataset):
         return data
     
 
-    def load_json(self) -> list[list[int]]:
+    def load_json(self, data_path) -> list[list[int]]:
         """
         - 비교적 이상치의 위험성이 적은 구간에 대한 정보를 담은 json 파일 불러옵니다.
         - csv 파일 경로를 파싱해서 json의 키 값으로 재활용합니다.
         """
-        data_path = self.data_path
         interval_path = self.interval_path
         dirc_name = data_path.split('/')[1]
         file_name = data_path.split('/')[2]
@@ -83,6 +82,22 @@ class OutlierDataset(Dataset):
                 windows.append(window)
         return windows
 
+    def loop_thru_dirc(self):
+        result = None
+        data_dir = self.config['data_path']
+        files = os.listdir(data_dir)
+        for file in files:
+            path = os.path.join(data_dir, file)
+            data = self.load_csv(path)
+            interval = self.load_json(path)
+            data = self.split_by_interval(data, interval)
+            data = self.slice_by_window(data)
+            
+            if result is None:
+                result = data
+            else:
+                result += data
+        return data
 
     def standardize(self, data: list[np.ndarray]) -> torch.Tensor:
         """
@@ -123,14 +138,13 @@ class OutlierDataset(Dataset):
         """
         - 훈련, 인퍼런스 케이스에 따라서 데이터 전처리 진행.
         """
-        data = self.load_csv()
         if self.train:
-            intervals = self.load_json()
-            data = self.split_by_interval(data, intervals)
-            data = self.slice_by_window(data)
+            data = self.loop_thru_dirc()
             data = self.standardize(data)
             data = self.add_noise(data)
         else:
+            data_path = self.config['data_path']
+            data = self.load_csv(data_path)
             data = self.process_test(data)
             data = self.standardize(data)
         return data

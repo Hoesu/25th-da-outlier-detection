@@ -164,22 +164,6 @@ def recon_probability(config: dict,
     return mean_probabilities
 
 
-def get_anomaly_intervals(anomaly_indices):
-    """
-    """
-    intervals = []
-    if len(anomaly_indices) == 0:
-        return intervals
-    
-    start = anomaly_indices[0]
-    for i in range(1, len(anomaly_indices)):
-        if anomaly_indices[i] != anomaly_indices[i - 1] + 1:
-            intervals.append((start, anomaly_indices[i - 1]))
-            start = anomaly_indices[i]
-    intervals.append((start, anomaly_indices[-1]))
-    return intervals
-
-
 if __name__ == '__main__':
 
     ## 파서로부터 config 파일의 경로를 받아옵니다.
@@ -194,13 +178,14 @@ if __name__ == '__main__':
     ## 결과물 저장용 디렉토리를 생성하고, 로깅을 시작합니다.
     data_path = config['data_path']
     dirc_name = data_path.split('/')[1]
-    file_name = data_path.split('/')[2][:-4]
-    output_dirc = os.path.join('./output', dirc_name, file_name)
+    output_dirc = os.path.join('./output', dirc_name)
     if config['train']:
         output_dirc = os.path.join(output_dirc, 'training_results')
+        checkpoint_path = os.path.join(output_dirc, 'model_best.pt')
     else:
         checkpoint_path = os.path.join(output_dirc, 'training_results/model_best.pt')
-        output_dirc = os.path.join(output_dirc, 'inference_results')
+        file_name = data_path.split('/')[2][:-4]
+        output_dirc = os.path.join('./output', dirc_name, file_name,'inference_results')
     if not os.path.exists(output_dirc):
         os.makedirs(output_dirc)
     log_file_path = os.path.join(output_dirc, 'logging.log')
@@ -354,9 +339,9 @@ if __name__ == '__main__':
 
         plot_path = os.path.join(output_dirc, 'original_vs_reconstructed.png')
         plt.figure(figsize=(20, 5))
-        plt.plot(all_original_np, label='Original', alpha=0.8, color='blue')
-        plt.plot(all_reconstructed_np, label='Reconstructed', alpha=1, color='orange')
-        plt.plot(all_probabilities_np*10, label='prob', alpha=1, color='red')
+        plt.plot(all_original_np, label='Original', alpha=0.8, color='blue', linewidth=0.5)
+        plt.plot(all_reconstructed_np, label='Reconstructed', alpha=1, color='orange', linewidth=0.5)
+        plt.plot(all_probabilities_np*10, label='prob', alpha=1, color='red', linewidth=0.5)
         plt.title('Original VS Reconstructed Data')
         plt.legend()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
