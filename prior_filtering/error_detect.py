@@ -1,67 +1,68 @@
 import pandas as pd
 import numpy as np
+from scipy.interpolate import CubicSpline
 import matplotlib.pyplot as plt
 
-
-def error_detect(csv_file, threshold_factor_doubtful=3, threshold_factor_frozen=0.5):
-    
+def error_detect_interpolate(csv_file):
     # CSV 파일 읽기
     data = pd.read_csv(csv_file)
-    
-    # 'value' 열이 있는지 확인
-    if 'value' not in data.columns:
-        raise ValueError("CSV 파일에 'value' 열이 없습니다.")
-    
-    # 'value' 열에서 기울기(gradient) 계산
+
+    # 필수 열 확인
+    if 'value' not in data.columns or 'time' not in data.columns:
+        raise ValueError("CSV 파일에 'value'와 'time' 열이 필요합니다.")
+
+    # 기울기 계산 및 상태 초기화
     data['gradient'] = np.gradient(data['value'])
-    
-    # 상태 초기화
     data['status'] = 'Normal'
-    
-    # Frozen 상태 분류
+
+    # Frozen 및 Hole 상태 분류
     frozen_condition = data['gradient'] == 0
-    data.loc[frozen_condition, 'status'] = 'Frozen'
-    
-    # 2. Hole 상태 정의: 값이 0인 경우
     hole_condition = data['value'] == 0
+    data.loc[frozen_condition, 'status'] = 'Frozen'
     data.loc[hole_condition, 'status'] = 'Hole'
-    data = data.drop(columns=['gradient'])
+
+    # Frozen과 Hole의 합이 과반수인지 체크
+    frozen_hole_count = data[frozen_condition | hole_condition].shape[0]
+    total_count = data.shape[0]
+
+    if frozen_hole_count > total_count / 2:
+        # Frozen과 Hole 데이터가 과반수일 경우 time 열의 값을 리스트로 반환
+        frozen_hole_times = data.loc[frozen_condition | hole_condition, 'time'].tolist()
+        print("Frozen과 Hole 상태가 과반수를 초과하여 원본 데이터를 반환합니다.")
+        return data.drop(columns=['gradient', 'status'])
+
+    # 과반수가 아닌 경우: NaN 처리 및 스플라인 보간 수행
+    data.loc[frozen_condition | hole_condition, 'value'] = np.nan
+
+    # 유효한 값의 인덱스와 값 추출
+    valid_idx = data[data['value'].notna()].index
+    valid_values = data['value'].dropna().values
+
+    # 스플라인 보간 적용
+    spline = CubicSpline(valid_idx, valid_values)
+    interpolated_values = pd.Series(spline(data.index), index=data.index)
+
+    # 보간된 값 대입
+    data['interpolated_value'] = data['value'].combine_first(interpolated_values)
+
+    # 시각화: 원본 값과 보간된 값 비교
+    plt.figure(figsize=(12, 6))
+    plt.plot(data.index, data['value'], 'o', label='Original (with NaN)', markersize=5, alpha=0.7)
+    plt.plot(data.index, data['interpolated_value'], '-', label='Interpolated (Cubic Spline)', linewidth=2)
+    plt.title('Comparison of Original and Interpolated Values')
+    plt.xlabel('Index')
+    plt.ylabel('Value')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # 불필요한 열 삭제
+    data = data.drop(columns=['gradient', 'status'])
+
+    # 보간된 DataFrame 반환
     return data
-
-
-def visualize_results(data, num_parts=5):
-    # 데이터 길이에 따라 나눌 크기 계산
-    part_size = len(data) // num_parts
-
-    # 각 부분별로 그래프를 그리기
-    for i in range(num_parts):
-        start = i * part_size
-        end = (i + 1) * part_size if i < num_parts - 1 else len(data)
-        subset = data.iloc[start:end]
-
-        plt.figure(figsize=(30, 10))  # 그래프 크기 설정
-
-        # 1. 전체 데이터를 선으로 표시 (해당 구간)
-        plt.plot(subset.index, subset['value'], color='blue', linewidth=2, label='Value (All)')
-
-        # 2. Frozen과 Hole 상태를 점으로 덧씌우기
-        color_map = {'Frozen': 'red', 'Hole': 'green'}
-        for status, color in color_map.items():
-            status_subset = subset[subset['status'] == status]
-            plt.scatter(status_subset.index, status_subset['value'], 
-                        color=color, label=status, s=50)
-
-        # 그래프 설정
-        plt.xlabel('Index')
-        plt.ylabel('Value')
-        plt.title(f'Error Detection Results (Part {i + 1}/{num_parts})')
-        plt.legend()
-        plt.grid(True)
-        plt.show()
-
-#사용 예제
 '''
-csv_file = r"C:\Users\김소민\Desktop\이상치탐지\DB\443_SK1_UZ1.csv"
-data = error_detect(csv_file)
-visualize_results(data)
+#활용 예재
+csv_file = r"C:\Users\김소민\Desktop\이상치탐지\DB1\DB\423_FM1_FC1_RWIN\KFEMS.HALLA.01.DC01.IP001_202211_feeder_00_tag_IO_5SEC_MIX_423_FM1_FC1_RWIN.csv"
+error_detect_and_spline_interpolate_with_condition(csv_file)
 '''
