@@ -1,0 +1,28 @@
+# 디렉토리 경로 설정
+base_dir: "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/data"
+isolation_dir: "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/output"
+#isolation_dir -> 이상치를 저장할 디렉토리 경로
+combined_outliers_file: "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/data/combined_df.csv"
+#combined_outliers_file-> preheater로 전처리된 데이터를 저장할 파일 경로
+single_file_path: ""  # 단일 파일 경로 설정 (단일 파일을 처리할 때 사용)
+
+# 사용할 모델 설정 (LOF 또는 ARIMA)
+model: "ARIMA"  # 사용할 모델 선택 ("LOF" 또는 "ARIMA")
+
+# LOF 설정
+lof:
+  n_neighbors_list: [20]  # 사용할 n_neighbors 목록
+
+# ARIMA 설정
+arima:
+  order: [5, 1, 0]  # ARIMA 모델의 (p, d, q) 설정
+
+# Preheater 설정 (데이터 전처리를 위한 옵션)
+preheater:
+  interpolate_method: "ffill"  # 결측치 처리 방식 (앞의 값을 채우는 방식)
+
+# 날짜 범위 설정
+date_range:
+  start_month: "202205"  # 시작 월 (형식: YYYYMM)
+  end_month: "202306"    # 종료 월 (형식: YYYYMM)
+  exclude_months: ["202304"]  # 제외할 월 목록
