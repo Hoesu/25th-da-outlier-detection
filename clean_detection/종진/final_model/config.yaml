@@ -1,0 +1,19 @@
+model:
+  type: "deep_autoencoder"  # "autoencoder" 또는 "deep_autoencoder" 선택
+  layers: 5            # 층 개수 설정
+  learning_rate: 0.001
+  window_size : 5
+  epochs: 200
+  anomaly_threshold : ''  # 이상치 탐지 경계값 (AutoEncoder), percentile 가능
+  reconstruction_error : 'z-score' # mae, z-score, cosine_sim 가능
+  xgboost_threshold : 3.0  # 이상치 탐지 경계값 (XGBoost)
+  
+
+visualization:
+  line_color: "grey"      # 회색 선 설정
+  outlier_color: "red"    # 이상치 표시 색상
+
+output:
+  results_csv: "anomaly_detection_results.csv"
+  combined_image: "anomaly_overall.png"
+  monthly_images_folder: "monthly_anomalies"
