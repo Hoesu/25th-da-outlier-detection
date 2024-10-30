@@ -92,47 +92,48 @@ class LOFProcessor:
                 lof_detector = LOFOutlierDetector(n_neighbors_list=self.n_neighbors_list)
                 df = lof_detector.fit_predict(df, ['value_scaled'])
 
-                # 청정구역 찾기
-                clean_intervals = self.clean_zone_finder.find_clean_zones(df, 'lof_outlier_20')
-                df['clean_zone'] = 0
-                for interval in clean_intervals:
-                    mask = (df['time'] >= interval[0]) & (df['time'] <= interval[1])
-                    df.loc[mask, 'clean_zone'] = 1
+                for n_neighbors in self.n_neighbors_list:
+                    # 청정구역 찾기
+                    clean_intervals = self.clean_zone_finder.find_clean_zones(df, f'lof_outlier_{n_neighbors}')
+                    df[f'clean_zone_{n_neighbors}'] = 0
+                    for interval in clean_intervals:
+                        mask = (df['time'] >= interval[0]) & (df['time'] <= interval[1])
+                        df.loc[mask, f'clean_zone_{n_neighbors}'] = 1
 
-                # 결과 저장 (time과 anomaly 컬럼만 포함)
-                output_file = os.path.join(self.isolation_dir, f"{file_name}_label.csv")
-                df_reset = df.reset_index()[['time', 'clean_zone']].rename(columns={'clean_zone': 'anomaly'})
-                df_reset.to_csv(output_file, index=False)
-                logging.info(f"Saved labeled data to {output_file}")
+                    # 결과 저장 (time과 anomaly 컬럼만 포함)
+                    output_file = os.path.join(self.isolation_dir, f"{file_name}_LOF_{n_neighbors}.csv")
+                    df_reset = df.reset_index()[['time', f'clean_zone_{n_neighbors}']].rename(columns={f'clean_zone_{n_neighbors}': 'anomaly'})
+                    df_reset.to_csv(output_file, index=False)
+                    logging.info(f"Saved labeled data to {output_file}")
 
-                # 월별 데이터 시각화 - 3x5 서브플롯 생성
-                df['month'] = df['time'].dt.to_period("M")
-                unique_months = df['month'].unique()[:15]  # 최대 15개월만 표시
+                    # 월별 데이터 시각화 - 3x5 서브플롯 생성
+                    df['month'] = df['time'].dt.to_period("M")
+                    unique_months = df['month'].unique()[:15]  # 최대 15개월만 표시
 
-                fig, axs = plt.subplots(3, 5, figsize=(20, 12), sharex=False)
-                fig.suptitle(f"{file_name} - Monthly LOF Outliers and Clean Zones", fontsize=16)
+                    fig, axs = plt.subplots(3, 5, figsize=(20, 12), sharex=False)
+                    fig.suptitle(f"{file_name} - Monthly LOF Outliers and Clean Zones (n_neighbors={n_neighbors})", fontsize=16)
 
-                for i, month in enumerate(unique_months):
-                    ax = axs[i // 5, i % 5]
-                    monthly_data = df[df['month'] == month]
+                    for i, month in enumerate(unique_months):
+                        ax = axs[i // 5, i % 5]
+                        monthly_data = df[df['month'] == month]
 
-                    # 각 월별 데이터 시각화
-                    ax.plot(monthly_data['time'], monthly_data['value'], label='Value')
-                    ax.scatter(monthly_data[monthly_data['lof_outlier_20'] == 1]['time'], 
-                               monthly_data[monthly_data['lof_outlier_20'] == 1]['value'], 
-                               color='red', label='Outliers')
-                    ax.fill_between(monthly_data['time'], monthly_data['value'], 
-                                    where=(monthly_data['clean_zone'] == 1), color='blue', alpha=0.3, label='Clean Zone')
-                    ax.set_title(f"Month: {month.strftime('%Y-%m')}", fontsize=10)
-                    ax.legend(fontsize=8)
+                        # 각 월별 데이터 시각화
+                        ax.plot(monthly_data['time'], monthly_data['value'], label='Value')
+                        ax.scatter(monthly_data[monthly_data[f'lof_outlier_{n_neighbors}'] == 1]['time'], 
+                                   monthly_data[monthly_data[f'lof_outlier_{n_neighbors}'] == 1]['value'], 
+                                   color='red', label='Outliers')
+                        ax.fill_between(monthly_data['time'], monthly_data['value'], 
+                                        where=(monthly_data[f'clean_zone_{n_neighbors}'] == 1), color='blue', alpha=0.3, label='Clean Zone')
+                        ax.set_title(f"Month: {month.strftime('%Y-%m')}", fontsize=10)
+                        ax.legend(fontsize=8)
 
-                    # 각 서브플롯의 x축을 월별 데이터로 설정
-                    ax.set_xlim(monthly_data['time'].min(), monthly_data['time'].max())
-                    ax.tick_params(axis='x', rotation=45)  # x축 눈금 회전
+                        # 각 서브플롯의 x축을 월별 데이터로 설정
+                        ax.set_xlim(monthly_data['time'].min(), monthly_data['time'].max())
+                        ax.tick_params(axis='x', rotation=45)  # x축 눈금 회전
 
-                plt.tight_layout(rect=[0, 0, 1, 0.96])
-                plt.savefig(os.path.join(self.isolation_dir, f"{file_name}_monthly_outliers.png"))
-                plt.close()
+                    plt.tight_layout(rect=[0, 0, 1, 0.96])
+                    plt.savefig(os.path.join(self.isolation_dir, f"{file_name}_monthly_outliers_{n_neighbors}.png"))
+                    plt.close()
 
             except Exception as e:
                 logging.error(f"Error processing {file_path}: {e}")
