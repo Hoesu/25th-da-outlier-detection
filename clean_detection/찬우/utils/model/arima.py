@@ -148,9 +148,8 @@ class OutlierProcessor:
 
                 # Detecting Anomalies with ARIMA
                 arima_detector = ARIMAOutlierDetector(order=(p, d, q))
-                anomalies, residuals = arima_detector.fit_predict(train_data, test_data)
-                df['arima_residual_anomaly'] = 0
-                df['arima_residual_anomaly'].iloc[train_size:] = anomalies
+                anomalies = arima_detector.fit_predict(df, 'value')
+                df['arima_residual_anomaly'] = anomalies
 
                 # Clean Zone Detection
                 clean_intervals = self.clean_zone_finder.find_clean_zones(df, 'arima_residual_anomaly')
@@ -182,7 +181,7 @@ class OutlierProcessor:
                                monthly_data[monthly_data['arima_residual_anomaly'] == 1]['value'],
                                color='red', label='Outliers')
                     ax.fill_between(monthly_data.index, monthly_data['value'], 
-                                    where=(monthly_data['clean_zone'] == 1), color='blue', alpha=0.3, label='Clean Zone')
+                                    where=(monthly_data['clean_zone'] == 0), color='blue', alpha=0.3, label='Clean Zone')
                     ax.set_title(f"Month: {month.strftime('%Y-%m')}", fontsize=10)
                     ax.legend(fontsize=8)
 
