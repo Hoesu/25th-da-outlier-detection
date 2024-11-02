@@ -3,16 +3,17 @@ import pandas as pd
 import numpy as np
 import logging
 import matplotlib.pyplot as plt
+from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
-from statsmodels.tsa.arima.model import ARIMA
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from pmdarima import auto_arima
 import yaml
 from tqdm import tqdm
 
-# Clean Zone Finder Class
+# 로깅 설정
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# 청정구역 탐색 모델 정의
 class CleanZoneFinder:
-    def __init__(self, time_column='time', min_clean_length=20):
+    def __init__(self, time_column='time', min_clean_length=30):
         self.time_column = time_column
         self.min_clean_length = min_clean_length
 
@@ -24,106 +25,60 @@ class CleanZoneFinder:
         for i in range(len(df)):
             if df[label_column].iloc[i] == 0:
                 if clean_start is None:
-                    clean_start = df.index[i]
+                    clean_start = df[self.time_column].iloc[i]
                 clean_length += 1
             else:
                 if clean_start is not None and clean_length >= self.min_clean_length:
-                    clean_end = df.index[i - 1]
-                    clean_intervals.append([clean_start, clean_end])
+                    clean_end = df[self.time_column].iloc[i - 1]
+                    clean_intervals.append([str(clean_start), str(clean_end)])
                 clean_start = None
                 clean_length = 0
 
         if clean_start is not None and clean_length >= self.min_clean_length:
-            clean_end = df.index[-1]
-            clean_intervals.append([clean_start, clean_end])
+            clean_end = df[self.time_column].iloc[-1]
+            clean_intervals.append([str(clean_start), str(clean_end)])
 
         return clean_intervals
 
-# ARIMA Outlier Detector
-class ARIMAOutlierDetector:
-    def __init__(self, order=(5, 1, 0)):
-        self.order = order
+# LOF 이상치 탐지 클래스
+class LOFOutlierDetector:
+    def __init__(self, n_neighbors_list):
+        self.n_neighbors_list = n_neighbors_list
 
-    def fit_predict(self, df, feature_column):
-        model = ARIMA(df[feature_column], order=self.order)
-        fit = model.fit()
-        df['arima_residual'] = fit.resid
-        threshold = 3 * np.std(df['arima_residual'])
-        df['arima_residual_anomaly'] = np.where(np.abs(df['arima_residual']) > threshold, 1, 0)
-        return df['arima_residual_anomaly']
+    def fit_predict(self, df, feature_columns):
+        for n_neighbors in self.n_neighbors_list:
+            lof_model = LocalOutlierFactor(n_neighbors=n_neighbors)
+            labels = lof_model.fit_predict(df[feature_columns])
+            df[f'lof_outlier_{n_neighbors}'] = np.where(labels == -1, 1, 0)  # -1을 이상치로 간주
+        return df
 
-# ARIMA Parameter Finder with Timeout
-def find_best_arima_params(data):
-    try:
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(
-                auto_arima, 
-                data.sample(frac=0.03, random_state=42),
-                seasonal=False,
-                start_p=1,
-                start_q=0,
-                max_p=5,
-                max_q=5,
-                d=2,
-                trace=True,
-                error_action='ignore',
-                suppress_warnings=True,
-                stepwise=True,
-                return_valid_fits=True  # 모든 유효한 모델을 반환
-            )
-            models = future.result(timeout=120)
-            best_model = min(models, key=lambda model: model.aic())  # AIC 값이 가장 낮은 모델 선택
-            return best_model.order
-    except TimeoutError:
-        logging.warning("Time limit exceeded, using default parameters (1, 1, 1)")
-        return (1, 1, 1)
-
-def update_arima_params(config_path, new_arima_params):
-    # 기존 config.yaml 파일 읽기
-    if os.path.exists(config_path):
-        with open(config_path, 'r', encoding='utf-8') as file:
-            config = yaml.safe_load(file) or {}  # 기존 설정이 없을 경우 빈 딕셔너리
-    else:
-        config = {}
-
-    # 기존 설정에 새 ARIMA 파라미터 추가
-    if 'arima_params' not in config:
-        config['arima_params'] = {}
-
-    # 새로운 ARIMA 파라미터 추가
-    config['arima_params'].update(new_arima_params)
-
-    # config.yaml 파일 다시 저장
-    with open(config_path, 'w', encoding='utf-8') as file:
-        yaml.dump(config, file, default_flow_style=False)
-    print("ARIMA 파라미터가 추가되었습니다.")
-
-# Outlier Processor Class
-class OutlierProcessor:
-    def __init__(self, base_dir, isolation_dir, min_clean_length=20):
+# LOFProcessor 클래스 - 데이터 처리 및 이상치 탐지
+class LOFProcessor:
+    def __init__(self, base_dir, isolation_dir, n_neighbors_list, min_clean_length):
         self.base_dir = base_dir
         self.isolation_dir = isolation_dir
-        self.clean_zone_finder = CleanZoneFinder(min_clean_length=min_clean_length)
+        self.n_neighbors_list = n_neighbors_list
+        self.min_clean_length = min_clean_length
+        self.clean_zone_finder = CleanZoneFinder(min_clean_length=self.min_clean_length)
 
+        # 결과 저장 디렉토리 생성
         if not os.path.exists(isolation_dir):
             os.makedirs(isolation_dir)
-
-    def process_data(self, config_path):
+                
+    def process_data(self):
         # data 폴더의 모든 CSV 파일을 처리
-        data_dir = os.path.join(self.base_dir, 'data')
-        csv_files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
+        csv_files = [f for f in os.listdir(self.base_dir) if f.endswith('.csv')]
 
-        logging.info(f"CSV files in {data_dir}:")
+        logging.info(f"CSV files in {self.base_dir}:")
         for file_name in csv_files:
             logging.info(file_name)
 
-        arima_params = {}
-
         for file_name in tqdm(csv_files, desc="Processing CSV files", unit='file'):
-            file_path = os.path.join(data_dir, file_name)
+            file_path = os.path.join(self.base_dir, file_name)
             logging.info(f"Processing: {file_path}")
 
             try:
+                # 데이터 읽기
                 df = pd.read_csv(file_path)
                 logging.info(f"Data read successfully: {file_path}")
 
@@ -134,79 +89,66 @@ class OutlierProcessor:
                     df.fillna(method='bfill', inplace=True)
 
                 df['time'] = pd.to_datetime(df['time'], unit='ms')
-                df.set_index('time', inplace=True)
-                data = df['value']
 
-                # 데이터 분할 (80% 학습, 20% 테스트)
-                train_size = int(len(data) * 0.8)
-                train_data, test_data = data[:train_size], data[train_size:]
+                # 스케일링
+                scaler = StandardScaler()
+                df['value_scaled'] = scaler.fit_transform(df[['value']])
 
-                # Finding ARIMA Parameters
-                p, d, q = find_best_arima_params(train_data)
-                arima_params[file_name] = (p, d, q)
-                logging.info(f"Best ARIMA params for {file_name}: (p={p}, d={d}, q={q})")
+                # LOF 모델을 사용해 이상치를 탐지
+                lof_detector = LOFOutlierDetector(n_neighbors_list=self.n_neighbors_list)
+                df = lof_detector.fit_predict(df, ['value_scaled'])
 
-                # Detecting Anomalies with ARIMA
-                arima_detector = ARIMAOutlierDetector(order=(p, d, q))
-                anomalies, residuals = arima_detector.fit_predict(train_data, test_data)
-                df['arima_residual_anomaly'] = 0
-                df['arima_residual_anomaly'].iloc[train_size:] = anomalies
+                for n_neighbors in self.n_neighbors_list:
+                    # 청정구역 찾기
+                    clean_intervals = self.clean_zone_finder.find_clean_zones(df, f'lof_outlier_{n_neighbors}')
+                    df[f'clean_zone_{n_neighbors}'] = 1  # 기본값을 1로 설정 (이상치)
+                    for interval in clean_intervals:
+                        mask = (df['time'] >= interval[0]) & (df['time'] <= interval[1])
+                        df.loc[mask, f'clean_zone_{n_neighbors}'] = 0  # 청정구역을 0으로 설정
 
-                # Clean Zone Detection
-                clean_intervals = self.clean_zone_finder.find_clean_zones(df, 'arima_residual_anomaly')
-                df['clean_zone'] = 1  # 기본값을 1로 설정 (이상치)
-                for interval in clean_intervals:
-                    mask = (df.index >= interval[0]) & (df.index <= interval[1])
-                    df.loc[mask, 'clean_zone'] = 0  # 청정구역을 0으로 설정
+                    # 결과 저장 (time과 anomaly 컬럼만 포함)
+                    output_file = os.path.join(self.isolation_dir, f"{file_name}_LOF_{n_neighbors}.csv")
+                    df_reset = df.reset_index()[['time', f'clean_zone_{n_neighbors}']].rename(columns={f'clean_zone_{n_neighbors}': 'anomaly'})
+                    df_reset.to_csv(output_file, index=False)
+                    logging.info(f"Saved labeled data to {output_file}")
 
-                # Saving the processed CSV with only 'time' and 'anomaly' columns
-                output_file = os.path.join(self.isolation_dir, f"{file_name}_arima_label.csv")
-                df_reset = df.reset_index()[['time', 'clean_zone']].rename(columns={'clean_zone': 'anomaly'})
-                df_reset.to_csv(output_file, index=False)
-                logging.info(f"Saved labeled data to {output_file}")
+                    # 월별 데이터 시각화 - 3x5 서브플롯 생성
+                    df['month'] = df['time'].dt.to_period("M")
+                    unique_months = df['month'].unique()[:15]  # 최대 15개월만 표시
 
-                # Monthly Plotting in a 3x5 Grid
-                df['month'] = df.index.to_period("M")
-                unique_months = df['month'].unique()[:15]  # Up to 15 months for 3x5 layout
+                    fig, axs = plt.subplots(3, 5, figsize=(20, 12), sharex=False)
+                    fig.suptitle(f"{file_name} - Monthly LOF Outliers and Clean Zones (n_neighbors={n_neighbors})", fontsize=16)
 
-                fig, axs = plt.subplots(3, 5, figsize=(20, 12), sharex=False)
-                fig.suptitle(f"{file_name} - Monthly ARIMA Outliers and Clean Zones", fontsize=16)
+                    for i, month in enumerate(unique_months):
+                        ax = axs[i // 5, i % 5]
+                        monthly_data = df[df['month'] == month]
 
-                for i, month in enumerate(unique_months):
-                    ax = axs[i // 5, i % 5]
-                    monthly_data = df[df['month'] == month]
+                        # 각 월별 데이터 시각화
+                        ax.plot(monthly_data['time'], monthly_data['value'], label='Value')
+                        ax.scatter(monthly_data[monthly_data[f'lof_outlier_{n_neighbors}'] == 1]['time'], 
+                                   monthly_data[monthly_data[f'lof_outlier_{n_neighbors}'] == 1]['value'], 
+                                   color='red', label='Outliers')
+                        ax.fill_between(monthly_data['time'], monthly_data['value'], 
+                                        where=(monthly_data[f'clean_zone_{n_neighbors}'] == 1), color='blue', alpha=0.3, label='Clean Zone')
+                        ax.set_title(f"Month: {month.strftime('%Y-%m')}", fontsize=10)
+                        ax.legend(fontsize=8)
 
-                    # Plot each month's data
-                    ax.plot(monthly_data.index, monthly_data['value'], label='Value')
-                    ax.scatter(monthly_data[monthly_data['arima_residual_anomaly'] == 1].index,
-                               monthly_data[monthly_data['arima_residual_anomaly'] == 1]['value'],
-                               color='red', label='Outliers')
-                    ax.fill_between(monthly_data.index, monthly_data['value'], 
-                                    where=(monthly_data['clean_zone'] == 1), color='blue', alpha=0.3, label='Clean Zone')
-                    ax.set_title(f"Month: {month.strftime('%Y-%m')}", fontsize=10)
-                    ax.legend(fontsize=8)
+                        # 각 서브플롯의 x축을 월별 데이터로 설정
+                        ax.set_xlim(monthly_data['time'].min(), monthly_data['time'].max())
+                        ax.tick_params(axis='x', rotation=45)  # x축 눈금 회전
 
-                    # Set x-axis limits to cover only the current month's data
-                    ax.set_xlim(monthly_data.index.min(), monthly_data.index.max())
-                    ax.tick_params(axis='x', rotation=45)  # Rotate x-ticks for readability
-
-                plt.tight_layout(rect=[0, 0, 1, 0.96])
-                plt.savefig(os.path.join(self.isolation_dir, f"{file_name}_monthly_arima_outliers.png"))
-                plt.close()
+                    plt.tight_layout(rect=[0, 0, 1, 0.96])
+                    plt.savefig(os.path.join(self.isolation_dir, f"{file_name}_monthly_outliers_{n_neighbors}.png"))
+                    plt.close()
 
             except Exception as e:
                 logging.error(f"Error processing {file_path}: {e}")
                 continue
 
-        # 기존 config.yaml 파일에 새로운 ARIMA 파라미터 추가
-        update_arima_params(config_path, arima_params)
-        logging.info(f"Saved ARIMA parameters to {config_path}")
-
 # 실행 예시
 if __name__ == "__main__":
-    base_dir = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection"
+    base_dir = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/data"
     isolation_dir = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/output"
-    config_path = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/utils/config.yaml"
-    
-    processor = OutlierProcessor(base_dir=base_dir, isolation_dir=isolation_dir)
-    processor.process_data(config_path)
+
+    processor = LOFProcessor(base_dir=base_dir, isolation_dir=isolation_dir, n_neighbors_list=[20, 30, 40], min_clean_length=30)
+    processor.process_data()
