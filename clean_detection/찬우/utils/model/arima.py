@@ -68,54 +68,97 @@ def find_best_arima_params(data):
                 trace=True,
                 error_action='ignore',
                 suppress_warnings=True,
-                stepwise=True
+                stepwise=True,
+                return_valid_fits=True  # 모든 유효한 모델을 반환
             )
-            return future.result(timeout=120).order
+            models = future.result(timeout=120)
+            best_model = min(models, key=lambda model: model.aic())  # AIC 값이 가장 낮은 모델 선택
+            return best_model.order
     except TimeoutError:
         logging.warning("Time limit exceeded, using default parameters (1, 1, 1)")
         return (1, 1, 1)
 
+def update_arima_params(config_path, new_arima_params):
+    # 기존 config.yaml 파일 읽기
+    if os.path.exists(config_path):
+        with open(config_path, 'r', encoding='utf-8') as file:
+            config = yaml.safe_load(file) or {}  # 기존 설정이 없을 경우 빈 딕셔너리
+    else:
+        config = {}
+
+    # 기존 설정에 새 ARIMA 파라미터 추가
+    if 'arima_params' not in config:
+        config['arima_params'] = {}
+
+    # 새로운 ARIMA 파라미터 추가
+    config['arima_params'].update(new_arima_params)
+
+    # config.yaml 파일 다시 저장
+    with open(config_path, 'w', encoding='utf-8') as file:
+        yaml.dump(config, file, default_flow_style=False)
+    print("ARIMA 파라미터가 추가되었습니다.")
+
 # Outlier Processor Class
 class OutlierProcessor:
-    def __init__(self, base_dir, isolation_dir):
+    def __init__(self, base_dir, isolation_dir, min_clean_length=20):
         self.base_dir = base_dir
         self.isolation_dir = isolation_dir
-        self.clean_zone_finder = CleanZoneFinder()
+        self.clean_zone_finder = CleanZoneFinder(min_clean_length=min_clean_length)
 
         if not os.path.exists(isolation_dir):
             os.makedirs(isolation_dir)
 
     def process_data(self, config_path):
-        csv_files = [f for f in os.listdir(self.base_dir) if f.endswith('.csv')]
+        # data 폴더의 모든 CSV 파일을 처리
+        data_dir = os.path.join(self.base_dir, 'data')
+        csv_files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
+
+        logging.info(f"CSV files in {data_dir}:")
+        for file_name in csv_files:
+            logging.info(file_name)
+
         arima_params = {}
 
         for file_name in tqdm(csv_files, desc="Processing CSV files", unit='file'):
-            file_path = os.path.join(self.base_dir, file_name)
+            file_path = os.path.join(data_dir, file_name)
             logging.info(f"Processing: {file_path}")
 
             try:
                 df = pd.read_csv(file_path)
+                logging.info(f"Data read successfully: {file_path}")
+
+                # NaN 값 처리
+                if df.isnull().values.any():
+                    logging.warning(f"NaN values found in {file_name}, filling NaNs with forward fill method.")
+                    df.fillna(method='ffill', inplace=True)
+                    df.fillna(method='bfill', inplace=True)
+
                 df['time'] = pd.to_datetime(df['time'], unit='ms')
                 df.set_index('time', inplace=True)
                 data = df['value']
 
+                # 데이터 분할 (80% 학습, 20% 테스트)
+                train_size = int(len(data) * 0.8)
+                train_data, test_data = data[:train_size], data[train_size:]
+
                 # Finding ARIMA Parameters
-                p, d, q = find_best_arima_params(data)
-                arima_params[file_name] = {'p': p, 'd': d, 'q': q}
+                p, d, q = find_best_arima_params(train_data)
+                arima_params[file_name] = (p, d, q)
                 logging.info(f"Best ARIMA params for {file_name}: (p={p}, d={d}, q={q})")
 
                 # Detecting Anomalies with ARIMA
                 arima_detector = ARIMAOutlierDetector(order=(p, d, q))
-                df['arima_residual_anomaly'] = arima_detector.fit_predict(df, 'value')
+                anomalies, residuals = arima_detector.fit_predict(train_data, test_data)
+                df['arima_residual_anomaly'] = 0
+                df['arima_residual_anomaly'].iloc[train_size:] = anomalies
 
                 # Clean Zone Detection
                 clean_intervals = self.clean_zone_finder.find_clean_zones(df, 'arima_residual_anomaly')
-                df['clean_zone'] = 0
+                df['clean_zone'] = 1  # 기본값을 1로 설정 (이상치)
                 for interval in clean_intervals:
                     mask = (df.index >= interval[0]) & (df.index <= interval[1])
-                    df.loc[mask, 'clean_zone'] = 1
+                    df.loc[mask, 'clean_zone'] = 0  # 청정구역을 0으로 설정
 
-                # Saving the processed CSV
                 # Saving the processed CSV with only 'time' and 'anomaly' columns
                 output_file = os.path.join(self.isolation_dir, f"{file_name}_arima_label.csv")
                 df_reset = df.reset_index()[['time', 'clean_zone']].rename(columns={'clean_zone': 'anomaly'})
@@ -155,13 +198,13 @@ class OutlierProcessor:
                 logging.error(f"Error processing {file_path}: {e}")
                 continue
 
-        with open(config_path, 'w') as config_file:
-            yaml.dump(arima_params, config_file, default_flow_style=False)
+        # 기존 config.yaml 파일에 새로운 ARIMA 파라미터 추가
+        update_arima_params(config_path, arima_params)
         logging.info(f"Saved ARIMA parameters to {config_path}")
 
 # 실행 예시
 if __name__ == "__main__":
-    base_dir = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/data"
+    base_dir = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection"
     isolation_dir = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/output"
     config_path = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/utils/config.yaml"
     
