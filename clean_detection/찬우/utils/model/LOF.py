@@ -149,6 +149,7 @@ class LOFProcessor:
 if __name__ == "__main__":
     base_dir = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/data"
     isolation_dir = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/output"
-
-    processor = LOFProcessor(base_dir=base_dir, isolation_dir=isolation_dir, n_neighbors_list=[20, 30, 40], min_clean_length=30)
+    config_path = "C:/Users/ansck/Documents/ybigta/DA_25/project/AD_detection/clean_detection/utils/config.yaml"
+    
+    processor = LOFProcessor(base_dir=base_dir, isolation_dir=isolation_dir, n_neighbors_list=[120,240, 480,720, 1000], min_clean_length=30)
     processor.process_data()
